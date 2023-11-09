@@ -3,13 +3,21 @@ package info_hub
 import (
 	"github.com/WQGroup/gonvtop/pkg/nvml"
 	"github.com/WQGroup/logger"
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/mem"
+	"sync"
 	"time"
 )
 
 type InfoHub struct {
-	api         *nvml.API
-	SystemInfos *SystemInfos
-	GPUInfos    map[string]*GPUInfos // UUID -> GPUInfos
+	api             *nvml.API
+	HostSystemInfos *HostSystemInfos
+	GPUDriverInfos  *GPUDriverInfos
+	GPUInfos        map[string]*GPUInfos // UUID -> GPUInfos
+	locker4Refresh  sync.Mutex
+
+	cacheInfo    CacheInfo
+	locker4Cache sync.Mutex
 }
 
 func NewInfoHub(nvmlDllPath string) *InfoHub {
@@ -38,12 +46,12 @@ func NewInfoHub(nvmlDllPath string) *InfoHub {
 		logger.Panicln(err)
 	}
 
-	systemInfos := NewSystemInfos(driverVersion, nvmlVersion, cudaDriverVersion)
+	systemInfos := NewGPUDriverInfos(driverVersion, nvmlVersion, cudaDriverVersion)
 
 	return &InfoHub{
-		api:         api,
-		SystemInfos: systemInfos,
-		GPUInfos:    make(map[string]*GPUInfos),
+		api:            api,
+		GPUDriverInfos: systemInfos,
+		GPUInfos:       make(map[string]*GPUInfos),
 	}
 }
 
@@ -53,17 +61,60 @@ func (i *InfoHub) Close() {
 	}
 }
 
-func (i *InfoHub) Refresh() error {
+func (i *InfoHub) Monitor(sleepTime time.Duration) {
 
-	err := i.refreshBaseInfo()
+	for {
+		err := i.refreshBaseInfo()
+		if err != nil {
+			logger.Panicln(err)
+		}
+		time.Sleep(sleepTime)
+	}
+}
+
+func (i *InfoHub) Refresh() error {
+	return i.refreshBaseInfo()
+}
+
+func (i *InfoHub) GetCacheInfo() CacheInfo {
+	i.locker4Cache.Lock()
+	defer i.locker4Cache.Unlock()
+	return i.cacheInfo
+}
+
+func (i *InfoHub) getHostSystemInfo() error {
+
+	percent, err := cpu.Percent(time.Second, false)
+	if err != nil {
+		return err
+	}
+	memInfo, err := mem.VirtualMemory()
 	if err != nil {
 		return err
 	}
 
+	nowMem := NewMemory(memInfo.Total, memInfo.Available, memInfo.Used, memInfo.UsedPercent, memInfo.Free)
+
+	i.HostSystemInfos = NewHostSystemInfos(percent[0], nowMem)
 	return nil
 }
 
 func (i *InfoHub) refreshBaseInfo() error {
+
+	i.locker4Refresh.Lock()
+	defer func() {
+
+		i.locker4Cache.Lock()
+		i.cacheInfo = *NewCacheInfo(*i.HostSystemInfos, *i.GPUDriverInfos, i.GPUInfos)
+		i.locker4Cache.Unlock()
+
+		i.locker4Refresh.Unlock()
+	}()
+
+	err := i.getHostSystemInfo()
+	if err != nil {
+		return err
+	}
 
 	deviceCount, err := i.api.DeviceGetCount()
 	if err != nil {
@@ -154,10 +205,10 @@ func (i *InfoHub) refreshBaseInfo() error {
 				UUID:              uuid,
 				Fan:               fan,
 				Temperature:       temperature,
-				UtilizationRates:  utilizationRates,
-				Memory:            memoryInfo,
-				Power:             PowerInfo{powerLimit, powerUsage},
-				computeCapability: NewComputeCapabilityInfo(uint32(major), uint32(minor)),
+				UtilizationRates:  &utilizationRates,
+				Memory:            &memoryInfo,
+				Power:             NewPowerInfo(powerLimit, powerUsage),
+				ComputeCapability: NewComputeCapabilityInfo(uint32(major), uint32(minor)),
 				Processes:         make(map[uint32]*ProcessInfo),
 			}
 			i.GPUInfos[uuid] = nowGPUInfo
@@ -166,9 +217,9 @@ func (i *InfoHub) refreshBaseInfo() error {
 			// 更新已有的
 			nowGPUInfo.Fan = fan
 			nowGPUInfo.Temperature = temperature
-			nowGPUInfo.UtilizationRates = utilizationRates
-			nowGPUInfo.Memory = memoryInfo
-			nowGPUInfo.Power = PowerInfo{powerLimit, powerUsage}
+			nowGPUInfo.UtilizationRates = &utilizationRates
+			nowGPUInfo.Memory = &memoryInfo
+			nowGPUInfo.Power = NewPowerInfo(powerLimit, powerUsage)
 		}
 		// 更新进程信息
 		for _, processUtilization := range processUtilizations {
@@ -186,4 +237,14 @@ func (i *InfoHub) refreshBaseInfo() error {
 	}
 
 	return err
+}
+
+type CacheInfo struct {
+	HostSystemInfos HostSystemInfos      `json:"host_system_infos"`
+	GPUDriverInfos  GPUDriverInfos       `json:"gpu_driver_infos"`
+	GPUInfos        map[string]*GPUInfos `json:"gpu_infos"` // UUID -> GPUInfos
+}
+
+func NewCacheInfo(hostSystemInfos HostSystemInfos, GPUDriverInfos GPUDriverInfos, GPUInfos map[string]*GPUInfos) *CacheInfo {
+	return &CacheInfo{HostSystemInfos: hostSystemInfos, GPUDriverInfos: GPUDriverInfos, GPUInfos: GPUInfos}
 }

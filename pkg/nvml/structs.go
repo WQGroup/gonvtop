@@ -16,9 +16,9 @@ const (
 
 // Memory holds allocation information for a device.
 type Memory struct {
-	Total uint64 // Total installed FB memory (in bytes).
-	Free  uint64 // Unallocated FB memory (in bytes).
-	Used  uint64 // Allocated FB memory (in bytes).
+	Total uint64 `json:"total"` // Total installed FB memory (in bytes).
+	Free  uint64 `json:"free"`  // Unallocated FB memory (in bytes).
+	Used  uint64 `json:"used"`  // Allocated FB memory (in bytes).
 }
 
 // BAR1Memory holds BAR1 memory allocation information for a device.
@@ -78,18 +78,18 @@ func (i ProcessInfo) MemoryInfoAvailable() bool {
 // Utilization information for a device.
 // Each sample period may be between 1 second and 1/6 second, depending on the product being queried.
 type Utilization struct {
-	GPU    uint32 // Percent of time over the past sample period during which one or more kernels was executing on the GPU.
-	Memory uint32 // Percent of time over the past sample period during which global (device) memory was being read or written.
+	GPU    uint32 `json:"gpu"`    // Percent of time over the past sample period during which one or more kernels was executing on the GPU.
+	Memory uint32 `json:"memory"` // Percent of time over the past sample period during which global (device) memory was being read or written.
 }
 
 // ProcessUtilizationSample represents the NVML process utilization sample.
 type ProcessUtilizationSample struct {
-	Pid       uint32
-	TimeStamp uint64
-	SmUtil    uint32
-	MemUtil   uint32
-	EncUtil   uint32
-	DecUtil   uint32
+	Pid       uint32 `json:"pid"`
+	TimeStamp uint64 `json:"time_stamp"`
+	SmUtil    uint32 `json:"sm_util"`
+	MemUtil   uint32 `json:"mem_util"`
+	EncUtil   uint32 `json:"enc_util"`
+	DecUtil   uint32 `json:"dec_util"`
 }
 
 // The Brand of the GPU.

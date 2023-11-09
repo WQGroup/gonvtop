@@ -5,72 +5,72 @@ import (
 	"github.com/WQGroup/gonvtop/pkg/nvml"
 )
 
-type SystemInfos struct {
-	driverVersion     string // 显卡驱动版本
-	nVMLVersion       string // NVML 版本
-	cudaDriverVersion int32  // CUDA 版本
+type GPUDriverInfos struct {
+	DriverVersion     string `json:"driver_version"`      // 显卡驱动版本
+	NVMLVersion       string `json:"nvml_version"`        // NVML 版本
+	CudaDriverVersion int32  `json:"cuda_driver_version"` // CUDA 版本
 }
 
-func NewSystemInfos(driverVersion, nVMLVersion string, cudaDriverVersion int32) *SystemInfos {
-	return &SystemInfos{
-		driverVersion:     driverVersion,
-		nVMLVersion:       nVMLVersion,
-		cudaDriverVersion: cudaDriverVersion,
+func NewGPUDriverInfos(driverVersion, nVMLVersion string, cudaDriverVersion int32) *GPUDriverInfos {
+	return &GPUDriverInfos{
+		DriverVersion:     driverVersion,
+		NVMLVersion:       nVMLVersion,
+		CudaDriverVersion: cudaDriverVersion,
 	}
 }
 
-func (v SystemInfos) GetDriverVersion() string {
-	return v.driverVersion
+func (v GPUDriverInfos) GetDriverVersion() string {
+	return v.DriverVersion
 }
 
-func (v SystemInfos) GetNVMLVersion() string {
-	return v.nVMLVersion
+func (v GPUDriverInfos) GetNVMLVersion() string {
+	return v.NVMLVersion
 }
 
-func (v SystemInfos) GetCUDADriverVersion() string {
-	return fmt.Sprintf("%d.%d", v.cudaDriverVersion/1000, (v.cudaDriverVersion%100)/10)
+func (v GPUDriverInfos) GetCUDADriverVersion() string {
+	return fmt.Sprintf("%d.%d", v.CudaDriverVersion/1000, (v.CudaDriverVersion%100)/10)
 }
 
 // -----------------------
 
 type GPUInfos struct {
-	Index             uint32                  // 索引
-	Name              string                  // 名称
-	BrandType         nvml.BrandType          // 型号分类
-	UUID              string                  // UUID
-	Fan               uint32                  // 风扇速度的百分比，满速是 100%
-	Temperature       uint32                  // 温度,C
-	UtilizationRates  nvml.Utilization        // 利用率（GPU and 显存）
-	Memory            nvml.Memory             // 显存使用信息
-	Power             PowerInfo               // 电源信息
-	computeCapability *ComputeCapabilityInfo  // CUDA 计算能力版本
-	Processes         map[uint32]*ProcessInfo // 进程信息
+	Index             uint32                  `json:"index"`              // 索引
+	Name              string                  `json:"name"`               // 名称
+	BrandType         nvml.BrandType          `json:"brand_type"`         // 型号分类
+	UUID              string                  `json:"uuid"`               // UUID
+	Fan               uint32                  `json:"fan"`                // 风扇速度的百分比，满速是 100%
+	Temperature       uint32                  `json:"temperature"`        // 温度,C
+	UtilizationRates  *nvml.Utilization       `json:"utilization_rates"`  // 利用率（GPU and 显存）
+	Memory            *nvml.Memory            `json:"memory"`             // 显存使用信息
+	Power             *PowerInfo              `json:"power"`              // 电源信息
+	ComputeCapability *ComputeCapabilityInfo  `json:"compute_capability"` // CUDA 计算能力版本
+	Processes         map[uint32]*ProcessInfo `json:"processes"`          // 进程信息
 }
 
 func (g GPUInfos) GetComputeCapability() string {
-	return g.computeCapability.Version()
+	return g.ComputeCapability.Version()
 }
 
 // -----------------------
 
 type ComputeCapabilityInfo struct {
-	major uint32 // 主版本号
-	minor uint32 // 次版本号
+	Major uint32 `json:"major"` // 主版本号
+	Minor uint32 `json:"minor"` // 次版本号
 }
 
 func NewComputeCapabilityInfo(major uint32, minor uint32) *ComputeCapabilityInfo {
-	return &ComputeCapabilityInfo{major: major, minor: minor}
+	return &ComputeCapabilityInfo{Major: major, Minor: minor}
 }
 
 func (c ComputeCapabilityInfo) Version() string {
-	return fmt.Sprintf("%d.%d", c.major, c.minor)
+	return fmt.Sprintf("%d.%d", c.Major, c.Minor)
 }
 
 // -----------------------
 
 type PowerInfo struct {
-	Usage uint32 // 电源当前的功耗
-	Limit uint32 // 电源的当前最大的限制功耗
+	Usage uint32 `json:"usage"` // 电源当前的功耗
+	Limit uint32 `json:"limit"` // 电源的当前最大的限制功耗
 }
 
 func NewPowerInfo(usage uint32, limit uint32) *PowerInfo {
@@ -80,10 +80,66 @@ func NewPowerInfo(usage uint32, limit uint32) *PowerInfo {
 // -----------------------
 
 type ProcessInfo struct {
-	name    string // 进程名称
-	uSample nvml.ProcessUtilizationSample
+	Name    string                        `json:"name"`     // 进程名称
+	USample nvml.ProcessUtilizationSample `json:"u_sample"` // 进程利用率
 }
 
 func NewProcessInfo(name string, uSample nvml.ProcessUtilizationSample) *ProcessInfo {
-	return &ProcessInfo{name: name, uSample: uSample}
+	return &ProcessInfo{Name: name, USample: uSample}
+}
+
+func (p ProcessInfo) GetPID() uint32 {
+	return p.USample.Pid
+}
+
+func (p ProcessInfo) GetName() string {
+	return p.Name
+}
+
+func (p ProcessInfo) GetSmUtil() uint32 {
+	return p.USample.SmUtil
+}
+
+func (p ProcessInfo) GetMemoryUtil() uint32 {
+	return p.USample.MemUtil
+}
+
+// -----------------------
+
+type HostSystemInfos struct {
+	CPUPercent float64 `json:"cpu_percent"` // CPU 利用率
+	Memory     *Memory `json:"memory"`      // 内存使用信息
+}
+
+func NewHostSystemInfos(CPUPercent float64, Memory *Memory) *HostSystemInfos {
+	return &HostSystemInfos{CPUPercent: CPUPercent, Memory: Memory}
+}
+
+type Memory struct {
+	// Total amount of RAM on this system
+	Total uint64 `json:"total"`
+
+	// RAM available for programs to allocate
+	//
+	// This value is computed from the kernel specific values.
+	Available uint64 `json:"available"`
+
+	// RAM used by programs
+	//
+	// This value is computed from the kernel specific values.
+	Used uint64 `json:"used"`
+
+	// Percentage of RAM used by programs
+	//
+	// This value is computed from the kernel specific values.
+	UsedPercent float64 `json:"usedPercent"`
+
+	// This is the kernel's notion of free memory; RAM chips whose bits nobody
+	// cares about the value of right now. For a human consumable number,
+	// Available is what you really want.
+	Free uint64 `json:"free"`
+}
+
+func NewMemory(total uint64, available uint64, used uint64, usedPercent float64, free uint64) *Memory {
+	return &Memory{Total: total, Available: available, Used: used, UsedPercent: usedPercent, Free: free}
 }

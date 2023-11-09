@@ -1,13 +1,14 @@
-package info_hub
+package main
 
 import (
-	"testing"
+	"github.com/WQGroup/gonvtop/pkg/info_hub"
+	"github.com/WQGroup/logger"
 	"time"
 )
 
-func TestInfoHub_Refresh(t *testing.T) {
+func main() {
 
-	infoHub := NewInfoHub("")
+	infoHub := info_hub.NewInfoHub("")
 	defer infoHub.Close()
 
 	println("Driver version:", infoHub.GPUDriverInfos.GetDriverVersion())
@@ -17,7 +18,7 @@ func TestInfoHub_Refresh(t *testing.T) {
 	for true {
 		err := infoHub.Refresh()
 		if err != nil {
-			t.Fatal(err)
+			logger.Panicln(err)
 		}
 		println("GPU count:", len(infoHub.GPUInfos))
 
@@ -33,25 +34,5 @@ func TestInfoHub_Refresh(t *testing.T) {
 		}
 
 		time.Sleep(1 * time.Second)
-	}
-}
-
-func BenchmarkInfoHub_Refresh(b *testing.B) {
-
-	infoHub := NewInfoHub("")
-	defer infoHub.Close()
-	err := infoHub.Refresh()
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	for _, gpuInfos := range infoHub.GPUInfos {
-		for _, process := range gpuInfos.Processes {
-			println("------------------------")
-			println("Name:", process.GetName())
-			println("PID:", process.GetPID())
-			println("GPU Util:", process.GetSmUtil())
-			println("GPU Memory:", process.GetMemoryUtil())
-		}
 	}
 }
