@@ -13,7 +13,7 @@ type InfoHub struct {
 	api             *nvml.API
 	HostSystemInfos *HostSystemInfos
 	GPUDriverInfos  *GPUDriverInfos
-	GPUInfos        map[string]*GPUInfos // UUID -> GPUInfos
+	GPUInfos        []*GPUInfos // UUID -> GPUInfos
 	locker4Refresh  sync.Mutex
 
 	cacheInfo    CacheInfo
@@ -48,10 +48,15 @@ func NewInfoHub(nvmlDllPath string) *InfoHub {
 
 	systemInfos := NewGPUDriverInfos(driverVersion, nvmlVersion, cudaDriverVersion)
 
+	deviceCount, err := api.DeviceGetCount()
+	if err != nil {
+		logger.Panicln(err)
+	}
+
 	return &InfoHub{
 		api:            api,
 		GPUDriverInfos: systemInfos,
-		GPUInfos:       make(map[string]*GPUInfos),
+		GPUInfos:       make([]*GPUInfos, deviceCount),
 	}
 }
 
@@ -195,8 +200,8 @@ func (i *InfoHub) refreshBaseInfo() error {
 			return err
 		}
 
-		nowGPUInfo, found := i.GPUInfos[uuid]
-		if found == false {
+		nowGPUInfo := i.GPUInfos[j]
+		if nowGPUInfo == nil {
 			// 新建
 			nowGPUInfo = &GPUInfos{
 				Index:             j,
@@ -211,7 +216,7 @@ func (i *InfoHub) refreshBaseInfo() error {
 				ComputeCapability: NewComputeCapabilityInfo(uint32(major), uint32(minor)),
 				Processes:         make(map[uint32]*ProcessInfo),
 			}
-			i.GPUInfos[uuid] = nowGPUInfo
+			i.GPUInfos[j] = nowGPUInfo
 
 		} else {
 			// 更新已有的
@@ -220,6 +225,7 @@ func (i *InfoHub) refreshBaseInfo() error {
 			nowGPUInfo.UtilizationRates = &utilizationRates
 			nowGPUInfo.Memory = &memoryInfo
 			nowGPUInfo.Power = NewPowerInfo(powerLimit, powerUsage)
+			nowGPUInfo.Processes = make(map[uint32]*ProcessInfo)
 		}
 		// 更新进程信息
 		for _, processUtilization := range processUtilizations {
@@ -240,11 +246,11 @@ func (i *InfoHub) refreshBaseInfo() error {
 }
 
 type CacheInfo struct {
-	HostSystemInfos HostSystemInfos      `json:"host_system_infos"`
-	GPUDriverInfos  GPUDriverInfos       `json:"gpu_driver_infos"`
-	GPUInfos        map[string]*GPUInfos `json:"gpu_infos"` // UUID -> GPUInfos
+	HostSystemInfos HostSystemInfos `json:"host_system_infos"`
+	GPUDriverInfos  GPUDriverInfos  `json:"gpu_driver_infos"`
+	GPUInfos        []*GPUInfos     `json:"gpu_infos"` // UUID -> GPUInfos
 }
 
-func NewCacheInfo(hostSystemInfos HostSystemInfos, GPUDriverInfos GPUDriverInfos, GPUInfos map[string]*GPUInfos) *CacheInfo {
+func NewCacheInfo(hostSystemInfos HostSystemInfos, GPUDriverInfos GPUDriverInfos, GPUInfos []*GPUInfos) *CacheInfo {
 	return &CacheInfo{HostSystemInfos: hostSystemInfos, GPUDriverInfos: GPUDriverInfos, GPUInfos: GPUInfos}
 }
