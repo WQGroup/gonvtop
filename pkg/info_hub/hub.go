@@ -5,6 +5,7 @@ import (
 	"github.com/WQGroup/logger"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
+	"github.com/shirou/gopsutil/process"
 	"sync"
 	"time"
 )
@@ -111,6 +112,7 @@ func (i *InfoHub) refreshBaseInfo() error {
 
 		i.locker4Cache.Lock()
 		i.cacheInfo = *NewCacheInfo(*i.HostSystemInfos, *i.GPUDriverInfos, i.GPUInfos)
+		i.cacheInfo.UpdateProcessInfo()
 		i.locker4Cache.Unlock()
 
 		i.locker4Refresh.Unlock()
@@ -214,7 +216,7 @@ func (i *InfoHub) refreshBaseInfo() error {
 				Memory:            &memoryInfo,
 				Power:             NewPowerInfo(powerLimit, powerUsage),
 				ComputeCapability: NewComputeCapabilityInfo(uint32(major), uint32(minor)),
-				Processes:         make(map[uint32]*ProcessInfo),
+				Processes:         make(map[uint32]*GPUProcessInfo),
 			}
 			i.GPUInfos[j] = nowGPUInfo
 
@@ -225,7 +227,7 @@ func (i *InfoHub) refreshBaseInfo() error {
 			nowGPUInfo.UtilizationRates = &utilizationRates
 			nowGPUInfo.Memory = &memoryInfo
 			nowGPUInfo.Power = NewPowerInfo(powerLimit, powerUsage)
-			nowGPUInfo.Processes = make(map[uint32]*ProcessInfo)
+			nowGPUInfo.Processes = make(map[uint32]*GPUProcessInfo)
 		}
 		// 更新进程信息
 		for _, processUtilization := range processUtilizations {
@@ -238,7 +240,7 @@ func (i *InfoHub) refreshBaseInfo() error {
 				continue
 			}
 			// 不管如何都要更新
-			nowGPUInfo.Processes[processUtilization.Pid] = NewProcessInfo(pName, processUtilization)
+			nowGPUInfo.Processes[processUtilization.Pid] = NewGPUProcessInfo(pName, processUtilization.Pid, processUtilization)
 		}
 	}
 
@@ -249,8 +251,73 @@ type CacheInfo struct {
 	HostSystemInfos HostSystemInfos `json:"host_system_infos"`
 	GPUDriverInfos  GPUDriverInfos  `json:"gpu_driver_infos"`
 	GPUInfos        []*GPUInfos     `json:"gpu_infos"` // UUID -> GPUInfos
+	ProcessInfos    []*ProcessInfo  `json:"process_infos"`
 }
 
 func NewCacheInfo(hostSystemInfos HostSystemInfos, GPUDriverInfos GPUDriverInfos, GPUInfos []*GPUInfos) *CacheInfo {
 	return &CacheInfo{HostSystemInfos: hostSystemInfos, GPUDriverInfos: GPUDriverInfos, GPUInfos: GPUInfos}
+}
+
+func (c *CacheInfo) UpdateProcessInfo() error {
+
+	c.ProcessInfos = make([]*ProcessInfo, 0)
+	tmpProcessMap := make(map[uint32]*ProcessInfo)
+	for index, gpuInfo := range c.GPUInfos {
+
+		for _, processInfo := range gpuInfo.Processes {
+
+			nowProcess, ok := tmpProcessMap[processInfo.USample.Pid]
+			if ok == false {
+				// 不存在则新建Pid
+				var err error
+				nowProcess, err = c.getProcessInfo(processInfo.Pid, processInfo.Name, len(c.GPUInfos))
+				if err != nil {
+					return err
+				}
+				nowProcess.GPUUSample[index] = processInfo.USample
+				tmpProcessMap[processInfo.USample.Pid] = nowProcess
+			} else {
+				// 存在则添加
+				tmpProcessMap[processInfo.USample.Pid].GPUUSample[index] = processInfo.USample
+			}
+		}
+	}
+
+	for _, processInfo := range tmpProcessMap {
+		c.ProcessInfos = append(c.ProcessInfos, processInfo)
+	}
+	return nil
+}
+
+func (c *CacheInfo) getProcessInfo(pid uint32, name string, gpuCounter int) (*ProcessInfo, error) {
+
+	newProcess, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return nil, err
+	}
+	cpuPercent, err := newProcess.CPUPercent()
+	if err != nil {
+		return nil, err
+	}
+	memInfo, err := newProcess.MemoryInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	memPercent, err := newProcess.MemoryPercent()
+	if err != nil {
+		return nil, err
+	}
+
+	cmdline, err := newProcess.Cmdline()
+	if err != nil {
+		return nil, err
+	}
+
+	//environ, err := newProcess.Environ()
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	return NewProcessInfo(pid, name, cmdline, []string{}, cpuPercent, memPercent, memInfo, gpuCounter), nil
 }

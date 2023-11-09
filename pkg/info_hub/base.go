@@ -3,6 +3,7 @@ package info_hub
 import (
 	"fmt"
 	"github.com/WQGroup/gonvtop/pkg/nvml"
+	"github.com/shirou/gopsutil/process"
 )
 
 type GPUDriverInfos struct {
@@ -34,17 +35,17 @@ func (v GPUDriverInfos) GetCUDADriverVersion() string {
 // -----------------------
 
 type GPUInfos struct {
-	Index             uint32                  `json:"index"`              // 索引
-	Name              string                  `json:"name"`               // 名称
-	BrandType         nvml.BrandType          `json:"brand_type"`         // 型号分类
-	UUID              string                  `json:"uuid"`               // UUID
-	Fan               uint32                  `json:"fan"`                // 风扇速度的百分比，满速是 100%
-	Temperature       uint32                  `json:"temperature"`        // 温度,C
-	UtilizationRates  *nvml.Utilization       `json:"utilization_rates"`  // 利用率（GPU and 显存）
-	Memory            *nvml.Memory            `json:"memory"`             // 显存使用信息
-	Power             *PowerInfo              `json:"power"`              // 电源信息
-	ComputeCapability *ComputeCapabilityInfo  `json:"compute_capability"` // CUDA 计算能力版本
-	Processes         map[uint32]*ProcessInfo `json:"processes"`          // 进程信息
+	Index             uint32                     `json:"index"`              // 索引
+	Name              string                     `json:"name"`               // 名称
+	BrandType         nvml.BrandType             `json:"brand_type"`         // 型号分类
+	UUID              string                     `json:"uuid"`               // UUID
+	Fan               uint32                     `json:"fan"`                // 风扇速度的百分比，满速是 100%
+	Temperature       uint32                     `json:"temperature"`        // 温度,C
+	UtilizationRates  *nvml.Utilization          `json:"utilization_rates"`  // 利用率（GPU and 显存）
+	Memory            *nvml.Memory               `json:"memory"`             // 显存使用信息
+	Power             *PowerInfo                 `json:"power"`              // 电源信息
+	ComputeCapability *ComputeCapabilityInfo     `json:"compute_capability"` // CUDA 计算能力版本
+	Processes         map[uint32]*GPUProcessInfo `json:"processes"`          // 进程信息
 }
 
 func (g GPUInfos) GetComputeCapability() string {
@@ -79,28 +80,29 @@ func NewPowerInfo(usage uint32, limit uint32) *PowerInfo {
 
 // -----------------------
 
-type ProcessInfo struct {
+type GPUProcessInfo struct {
 	Name    string                        `json:"name"`     // 进程名称
+	Pid     uint32                        `json:"pid"`      // 进程 ID
 	USample nvml.ProcessUtilizationSample `json:"u_sample"` // 进程利用率
 }
 
-func NewProcessInfo(name string, uSample nvml.ProcessUtilizationSample) *ProcessInfo {
-	return &ProcessInfo{Name: name, USample: uSample}
+func NewGPUProcessInfo(name string, Pid uint32, uSample nvml.ProcessUtilizationSample) *GPUProcessInfo {
+	return &GPUProcessInfo{Name: name, Pid: Pid, USample: uSample}
 }
 
-func (p ProcessInfo) GetPID() uint32 {
+func (p GPUProcessInfo) GetPID() uint32 {
 	return p.USample.Pid
 }
 
-func (p ProcessInfo) GetName() string {
+func (p GPUProcessInfo) GetName() string {
 	return p.Name
 }
 
-func (p ProcessInfo) GetSmUtil() uint32 {
+func (p GPUProcessInfo) GetSmUtil() uint32 {
 	return p.USample.SmUtil
 }
 
-func (p ProcessInfo) GetMemoryUtil() uint32 {
+func (p GPUProcessInfo) GetMemoryUtil() uint32 {
 	return p.USample.MemUtil
 }
 
@@ -142,4 +144,23 @@ type Memory struct {
 
 func NewMemory(total uint64, available uint64, used uint64, usedPercent float64, free uint64) *Memory {
 	return &Memory{Total: total, Available: available, Used: used, UsedPercent: usedPercent, Free: free}
+}
+
+// ----------------------------
+
+type ProcessInfo struct {
+	PID        uint32                          `json:"pid"` // 进程 ID
+	Name       string                          `json:"name"`
+	Environ    []string                        `json:"environ"`
+	Cmdline    string                          `json:"cmd_line"`
+	CpuPercent float64                         `json:"cpu_percent"`
+	MemPercent float32                         `json:"mem_percent"`
+	MemInfo    *process.MemoryInfoStat         `json:"mem_info"`
+	GPUUSample []nvml.ProcessUtilizationSample `json:"gpu_u_sample"`
+}
+
+func NewProcessInfo(PID uint32, name, Cmdline string, environ []string, cpuPercent float64, memPercent float32,
+	memInfo *process.MemoryInfoStat, gpuCounter int) *ProcessInfo {
+	return &ProcessInfo{PID: PID, Name: name, Cmdline: Cmdline, Environ: environ, CpuPercent: cpuPercent, MemPercent: memPercent,
+		MemInfo: memInfo, GPUUSample: make([]nvml.ProcessUtilizationSample, gpuCounter)}
 }
