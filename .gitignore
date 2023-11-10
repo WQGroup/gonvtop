@@ -1,1 +1,6 @@
 /.idea
+/Logs
+/cmd/gonvtop/data/
+/cmd/gonvtop/Logs/
+/cmd/gonvtop/*.exe
+/cmd/gonvtop/*.dll

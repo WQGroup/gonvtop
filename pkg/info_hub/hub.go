@@ -264,8 +264,14 @@ func (c *CacheInfo) UpdateProcessInfo() error {
 	tmpProcessMap := make(map[uint32]*ProcessInfo)
 	for index, gpuInfo := range c.GPUInfos {
 
+		if gpuInfo == nil {
+			continue
+		}
 		for _, processInfo := range gpuInfo.Processes {
 
+			if processInfo == nil {
+				continue
+			}
 			nowProcess, ok := tmpProcessMap[processInfo.USample.Pid]
 			if ok == false {
 				// 不存在则新建Pid
@@ -319,5 +325,5 @@ func (c *CacheInfo) getProcessInfo(pid uint32, name string, gpuCounter int) (*Pr
 	//	return nil, err
 	//}
 
-	return NewProcessInfo(pid, name, cmdline, []string{}, cpuPercent, memPercent, memInfo, gpuCounter), nil
+	return NewProcessInfo(pid, name, cmdline, []string{}, c.HostSystemInfos.CPUPercent*cpuPercent/100.0, memPercent, memInfo, gpuCounter), nil
 }
